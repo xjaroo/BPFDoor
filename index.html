@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BPFdoor Full Architecture (Interactive Editable)</title>
+  <link href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #f0f2f5; font-family: sans-serif; }
+    #drawflow { width: 100%; height: 95vh; background: #fff; }
+    .drawflow-node {
+      background: #0074D9;
+      border-radius: 10px;
+      padding: 10px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .drawflow-node:hover { cursor: pointer; }
+    .inputs, .outputs {
+      width: 100%;
+      height: 10px;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<h2 style="text-align:center">BPFdoor Full Architecture (Interactive Editable)</h2>
+<div id="drawflow"></div>
+
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    var editor = new Drawflow(document.getElementById('drawflow'));
+    editor.reroute = true;
+    editor.start();
+
+    function addNode(name, inputs, outputs, x, y, info) {
+      editor.addNode(name, inputs, outputs, x, y, name, {info: info},
+        `<div style='text-align:center;'>
+          <div class='title'><b>${name}</b></div>
+          <div class='drawflow-content'>
+            <small id='info-${name}'>${info}</small><br/>
+            <button onclick='editInfo("${name}")'>Edit</button>
+          </div>
+          <div class='inputs'></div>
+          <div class='outputs'></div>
+        </div>`
+      );
+    }
+
+    window.editInfo = function(name) {
+      let newInfo = prompt("Enter new info for " + name);
+      if (newInfo !== null) {
+        document.getElementById("info-" + name).innerText = newInfo;
+        editor.drawflow.Home.data[name].data.info = newInfo;
+      }
+    }
+
+    // Define nodes with input/output counts
+    const nodes = [
+      ['main()', 0, 1, 50, 50, 'Program entry point'],
+      ['Initialisation', 1, 1, 300, 50, 'hash, hash2, self[], pid_path'],
+      ['Check pid_path', 1, 1, 550, 50, 'Check if PID file exists'],
+      ['Exit if exists', 1, 1, 800, 50, 'Exit if PID file found'],
+      ['Check root', 1, 1, 1050, 50, 'Ensure user is root'],
+      ['Exit if not root', 1, 1, 1300, 50, 'Exit if not root'],
+      ['Check argc==1', 1, 1, 1550, 50, 'Run to_open() if only program name'],
+      ['Set mask/password', 1, 1, 1800, 50, 'Randomise process mask, set passwords'],
+      ['Setup time/name', 1, 1, 2050, 50, 'setup_time() and set_proc_name()'],
+      ['Fork daemon', 1, 2, 2300, 50, 'Create background daemon'],
+      ['Parent exits', 1, 0, 2550, 0, 'Parent process exits'],
+      ['Child sets signals', 1, 1, 2550, 100, 'Init signals, write pid'],
+      ['Detach session', 1, 1, 2800, 50, 'setsid() and session detach'],
+      ['Enter packet_loop()', 1, 2, 3050, 50, 'Start listening to network packets'],
+      ['Create Socket', 1, 0, 3300, 0, 'Create raw socket + BPF filter'],
+      ['Packet Sniff Loop', 0, 1, 3300, 100, 'recvfrom() packets'],
+      ['Parse Packet', 1, 1, 3550, 50, 'Parse IP/TCP/UDP/ICMP'],
+      ['Check Magic Packet', 1, 1, 3800, 50, 'Identify control packets'],
+      ['Fork to Handle', 1, 3, 4050, 50, 'Fork child to handle magic packet'],
+      ['Authenticated (pass2)', 1, 1, 4300, 0, 'getshell() - iptables + spawn shell'],
+      ['Authenticated (pass)', 1, 1, 4300, 100, 'try_link() and shell()'],
+      ['Unauthenticated', 1, 0, 4300, 200, 'mon() - send UDP response'],
+      ['getshell()', 1, 1, 4550, 0, 'Setup firewall and spawn shell'],
+      ['shell()', 1, 0, 4800, 0, 'Encrypted comms via pty and /bin/sh']
+    ];
+
+    nodes.forEach(n => addNode(...n));
+
+    // Define connections with explicit ports
+    const connections = [
+      ['main()', 'Initialisation', 'output_1', 'input_1'],
+      ['Initialisation', 'Check pid_path', 'output_1', 'input_1'],
+      ['Check pid_path', 'Exit if exists', 'output_1', 'input_1'],
+      ['Exit if exists', 'Check root', 'output_1', 'input_1'],
+      ['Check root', 'Exit if not root', 'output_1', 'input_1'],
+      ['Exit if not root', 'Check argc==1', 'output_1', 'input_1'],
+      ['Check argc==1', 'Set mask/password', 'output_1', 'input_1'],
+      ['Set mask/password', 'Setup time/name', 'output_1', 'input_1'],
+      ['Setup time/name', 'Fork daemon', 'output_1', 'input_1'],
+      ['Fork daemon', 'Parent exits', 'output_1', 'input_1'],
+      ['Fork daemon', 'Child sets signals', 'output_2', 'input_1'],
+      ['Child sets signals', 'Detach session', 'output_1', 'input_1'],
+      ['Detach session', 'Enter packet_loop()', 'output_1', 'input_1'],
+      ['Enter packet_loop()', 'Create Socket', 'output_1', 'input_1'],
+      ['Enter packet_loop()', 'Packet Sniff Loop', 'output_2', 'input_1'],
+      ['Packet Sniff Loop', 'Parse Packet', 'output_1', 'input_1'],
+      ['Parse Packet', 'Check Magic Packet', 'output_1', 'input_1'],
+      ['Check Magic Packet', 'Fork to Handle', 'output_1', 'input_1'],
+      ['Fork to Handle', 'Authenticated (pass2)', 'output_1', 'input_1'],
+      ['Fork to Handle', 'Authenticated (pass)', 'output_2', 'input_1'],
+      ['Fork to Handle', 'Unauthenticated', 'output_3', 'input_1'],
+      ['Authenticated (pass2)', 'getshell()', 'output_1', 'input_1'],
+      ['getshell()', 'shell()', 'output_1', 'input_1'],
+      ['Authenticated (pass)', 'shell()', 'output_1', 'input_1']
+    ];
+
+    connections.forEach(c => editor.addConnection(c[0], c[1], c[2], c[3]));
+    // Redraw
+    editor.drawflow.draw();
+  });
+</script>
+
+</body>
+</html>
